@@ -13,19 +13,24 @@ const client = new Client({
 });
 
 // ENV
-const PANEL_CHANNEL = process.env.CHANNEL_ID;
-const ORDER_CHANNEL = process.env.ORDER_CHANNEL_ID;
-const QRIS_IMAGE = process.env.QRIS_IMAGE_URL;
+const PANEL_CHANNEL = process.env.CHANNEL_ID;        // contoh: #ts / #test
+const ORDER_CHANNEL = process.env.ORDER_CHANNEL_ID;  // contoh: #order-vip
+const QRIS_IMAGE = process.env.QRIS_IMAGE_URL;       // link gambar QRIS
 
-// Simpan pilihan user
+// Simpan pilihan durasi per user (sementara)
 const userChoice = new Map();
 
 client.once("ready", async () => {
   console.log("✅ Bot Online!");
 
+  if (!PANEL_CHANNEL || !ORDER_CHANNEL) {
+    console.log("❌ ENV kurang. Pastikan CHANNEL_ID & ORDER_CHANNEL_ID sudah di set.");
+    return;
+  }
+
   const channel = await client.channels.fetch(PANEL_CHANNEL);
 
-  // Embed panel
+  // Panel store (tanpa list harga)
   const embed = new EmbedBuilder()
     .setTitle("🚀 DN VIP SCRIPTS")
     .setDescription(`
@@ -41,7 +46,7 @@ client.once("ready", async () => {
 `)
     .setColor(0x00ff99);
 
-  // Dropdown
+  // Dropdown durasi (harga gak ditulis)
   const menu = new StringSelectMenuBuilder()
     .setCustomId("paket_menu")
     .setPlaceholder("▼ Pilih Durasi Script")
@@ -62,19 +67,14 @@ client.once("ready", async () => {
       .setStyle(ButtonStyle.Success)
   );
 
-  await channel.send({
-    embeds: [embed],
-    components: [rowMenu, rowBtn],
-  });
-
+  await channel.send({ embeds: [embed], components: [rowMenu, rowBtn] });
   console.log("✅ Panel terkirim!");
 });
 
-// ✅ INTERACTION
 client.on("interactionCreate", async (interaction) => {
   try {
-    // Dropdown pilih paket
-    if (interaction.isStringSelectMenu()) {
+    // Dropdown dipilih
+    if (interaction.isStringSelectMenu() && interaction.customId === "paket_menu") {
       userChoice.set(interaction.user.id, interaction.values[0]);
 
       await interaction.reply({
@@ -84,9 +84,9 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
 
-    // Klik BELI SEKARANG
+    // Klik BELI SEKARANG => munculin QRIS + tombol BUAT TICKET
     if (interaction.isButton() && interaction.customId === "buy_now") {
-      const paket = userChoice.get(interaction.user.id) || "Belum pilih paket";
+      const paket = userChoice.get(interaction.user.id) || "Belum pilih durasi";
 
       const payEmbed = new EmbedBuilder()
         .setTitle("💳 Pembayaran QRIS")
@@ -115,17 +115,19 @@ Setelah bayar klik tombol **BUAT TICKET**
       return;
     }
 
-    // ✅ Klik BUAT TICKET langsung kirim ke #order-vip
+    // Klik BUAT TICKET => kirim ke #order-vip (langsung, anti stuck)
     if (interaction.isButton() && interaction.customId === "buat_ticket") {
-      // WAJIB cepat respon dulu biar gak error
-      await interaction.deferReply({ ephemeral: true });
+      // respon cepat dulu biar gak "thinking..."
+      await interaction.reply({
+        content: "✅ Ticket sedang dibuat...",
+        ephemeral: true,
+      });
 
       const orderChannel = await client.channels.fetch(ORDER_CHANNEL);
-
-      const paket = userChoice.get(interaction.user.id) || "Tidak pilih paket";
+      const paket = userChoice.get(interaction.user.id) || "Tidak pilih durasi";
 
       await orderChannel.send(`
-🎫 **TICKET ORDER MASUK!**
+🎫 **ORDER MASUK**
 User: <@${interaction.user.id}>
 Durasi: **${paket}**
 
@@ -142,9 +144,12 @@ Durasi: **${paket}**
   } catch (err) {
     console.log("ERROR:", err);
 
-    if (!interaction.replied) {
+    // kalau sudah reply, edit; kalau belum, reply
+    if (interaction.replied) {
+      await interaction.editReply("❌ Bot error. Cek ORDER_CHANNEL_ID & izin bot di #order-vip.");
+    } else {
       await interaction.reply({
-        content: "❌ Error, bot tidak bisa kirim ke channel order.",
+        content: "❌ Bot error. Cek ORDER_CHANNEL_ID & izin bot di #order-vip.",
         ephemeral: true,
       });
     }
