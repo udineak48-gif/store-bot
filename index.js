@@ -12,11 +12,12 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds],
 });
 
-const PANEL_CHANNEL = process.env.CHANNEL_ID; // #test
-const ORDER_CHANNEL = process.env.ORDER_CHANNEL_ID; // #order-vip
-const QRIS_IMAGE = process.env.QRIS_IMAGE_URL; // Link QRIS
+// ENV
+const PANEL_CHANNEL = process.env.CHANNEL_ID;
+const ORDER_CHANNEL = process.env.ORDER_CHANNEL_ID;
+const QRIS_IMAGE = process.env.QRIS_IMAGE_URL;
 
-// Simpan pilihan paket user
+// Simpan pilihan user
 const userChoice = new Map();
 
 client.once("ready", async () => {
@@ -24,7 +25,7 @@ client.once("ready", async () => {
 
   const channel = await client.channels.fetch(PANEL_CHANNEL);
 
-  // ✅ EMBED STORE (Harga gak ditulis)
+  // Embed panel
   const embed = new EmbedBuilder()
     .setTitle("🚀 DN VIP SCRIPTS")
     .setDescription(`
@@ -40,7 +41,7 @@ client.once("ready", async () => {
 `)
     .setColor(0x00ff99);
 
-  // ✅ Dropdown durasi
+  // Dropdown
   const menu = new StringSelectMenuBuilder()
     .setCustomId("paket_menu")
     .setPlaceholder("▼ Pilih Durasi Script")
@@ -53,7 +54,7 @@ client.once("ready", async () => {
 
   const rowMenu = new ActionRowBuilder().addComponents(menu);
 
-  // ✅ Button beli
+  // Button beli
   const rowBtn = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("buy_now")
@@ -61,73 +62,92 @@ client.once("ready", async () => {
       .setStyle(ButtonStyle.Success)
   );
 
-  await channel.send({ embeds: [embed], components: [rowMenu, rowBtn] });
+  await channel.send({
+    embeds: [embed],
+    components: [rowMenu, rowBtn],
+  });
 
-  console.log("✅ Panel terkirim ke #test");
+  console.log("✅ Panel terkirim!");
 });
 
-// ✅ Interaction Handler
+// ✅ INTERACTION
 client.on("interactionCreate", async (interaction) => {
-  // Dropdown dipilih
-  if (interaction.isStringSelectMenu() && interaction.customId === "paket_menu") {
-    userChoice.set(interaction.user.id, interaction.values[0]);
+  try {
+    // Dropdown pilih paket
+    if (interaction.isStringSelectMenu()) {
+      userChoice.set(interaction.user.id, interaction.values[0]);
 
-    await interaction.reply({
-      content: `✅ Kamu pilih durasi: **${interaction.values[0]}**`,
-      ephemeral: true,
-    });
-  }
+      await interaction.reply({
+        content: `✅ Kamu pilih durasi: **${interaction.values[0]}**`,
+        ephemeral: true,
+      });
+      return;
+    }
 
-  // Klik BELI SEKARANG → QRIS muncul
-  if (interaction.isButton() && interaction.customId === "buy_now") {
-    const paket = userChoice.get(interaction.user.id) || "Belum pilih paket";
+    // Klik BELI SEKARANG
+    if (interaction.isButton() && interaction.customId === "buy_now") {
+      const paket = userChoice.get(interaction.user.id) || "Belum pilih paket";
 
-    const payEmbed = new EmbedBuilder()
-      .setTitle("💳 Pembayaran QRIS")
-      .setDescription(`
+      const payEmbed = new EmbedBuilder()
+        .setTitle("💳 Pembayaran QRIS")
+        .setDescription(`
 Paket: **${paket}**
 
-✅ Silakan scan QRIS di bawah  
+✅ Scan QRIS di bawah  
 Setelah bayar klik tombol **BUAT TICKET**
 `)
-      .setColor(0x00ff99);
+        .setColor(0x00ff99);
 
-    if (QRIS_IMAGE) payEmbed.setImage(QRIS_IMAGE);
+      if (QRIS_IMAGE) payEmbed.setImage(QRIS_IMAGE);
 
-    const rowTicket = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("buat_ticket")
-        .setLabel("🎫 BUAT TICKET")
-        .setStyle(ButtonStyle.Primary)
-    );
+      const rowTicket = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("buat_ticket")
+          .setLabel("🎫 BUAT TICKET")
+          .setStyle(ButtonStyle.Primary)
+      );
 
-    await interaction.reply({
-      embeds: [payEmbed],
-      components: [rowTicket],
-      ephemeral: true,
-    });
-  }
+      await interaction.reply({
+        embeds: [payEmbed],
+        components: [rowTicket],
+        ephemeral: true,
+      });
+      return;
+    }
 
-  // Klik BUAT TICKET → Kirim ke #order-vip
-  if (interaction.isButton() && interaction.customId === "buat_ticket") {
-    const orderChannel = await client.channels.fetch(ORDER_CHANNEL);
+    // ✅ Klik BUAT TICKET langsung kirim ke #order-vip
+    if (interaction.isButton() && interaction.customId === "buat_ticket") {
+      // WAJIB cepat respon dulu biar gak error
+      await interaction.deferReply({ ephemeral: true });
 
-    const paket = userChoice.get(interaction.user.id) || "Tidak pilih paket";
+      const orderChannel = await client.channels.fetch(ORDER_CHANNEL);
 
-    await orderChannel.send(`
-🛒 **ORDER MASUK!**
+      const paket = userChoice.get(interaction.user.id) || "Tidak pilih paket";
+
+      await orderChannel.send(`
+🎫 **TICKET ORDER MASUK!**
 User: <@${interaction.user.id}>
 Durasi: **${paket}**
 
 ✅ Silakan kirim:
 - Username Roblox
-- Bukti transfer QRIS
+- Bukti bayar QRIS
 `);
 
-    await interaction.reply({
-      content: "✅ Ticket berhasil dibuat! Silakan lanjut di #order-vip",
-      ephemeral: true,
-    });
+      await interaction.editReply({
+        content: "✅ Ticket berhasil dikirim ke channel **#order-vip**!",
+      });
+      return;
+    }
+  } catch (err) {
+    console.log("ERROR:", err);
+
+    if (!interaction.replied) {
+      await interaction.reply({
+        content: "❌ Error, bot tidak bisa kirim ke channel order.",
+        ephemeral: true,
+      });
+    }
   }
 });
 
