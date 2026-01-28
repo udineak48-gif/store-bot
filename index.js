@@ -12,61 +12,48 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds],
 });
 
-/*
-✅ ENV Railway Variables:
-TOKEN = Token Bot
-CHANNEL_ID = Channel Panel Store
-TICKET_CHANNEL_ID = Channel Ticket/Order
-*/
+const PANEL_CHANNEL = process.env.CHANNEL_ID; // #test
+const ORDER_CHANNEL = process.env.ORDER_CHANNEL_ID; // #order-vip
+const QRIS_IMAGE = process.env.QRIS_IMAGE_URL; // Link QRIS
 
-const PANEL_CHANNEL = process.env.CHANNEL_ID;
-const TICKET_CHANNEL = process.env.TICKET_CHANNEL_ID;
+// Simpan pilihan paket user
+const userChoice = new Map();
 
 client.once("ready", async () => {
   console.log("✅ Bot Online!");
 
-  // ✅ Ambil channel panel store
   const channel = await client.channels.fetch(PANEL_CHANNEL);
 
-  // ✅ EMBED STORE PANEL
+  // ✅ EMBED STORE (Harga gak ditulis)
   const embed = new EmbedBuilder()
     .setTitle("🚀 DN VIP SCRIPTS")
     .setDescription(`
-**Pembelian Otomatis & Cepat**
-
 💎 Script Roblox Premium  
 ⚡ Auto Process 24/7  
 🔒 Aman & Terpercaya  
 
-💰 **Harga Script:**  
-💠 1 Hari — Rp 5.000  
-💠 7 Hari — Rp 20.000  
-💠 14 Hari — Rp 35.000  
-💠 30 Hari — Rp 60.000  
-
-🛒 **Cara Order:**  
-1️⃣ Klik **BELI SEKARANG**  
-2️⃣ Bayar via **QRIS**  
-3️⃣ Kirim username Roblox + bukti bayar di ticket  
-
-✅ Auto Process • 24/7 Online
+🛒 **Cara Order:**
+1️⃣ Pilih Durasi Script  
+2️⃣ Klik **BELI SEKARANG**  
+3️⃣ Scan QRIS  
+4️⃣ Klik **BUAT TICKET** dan kirim bukti bayar
 `)
     .setColor(0x00ff99);
 
-  // ✅ DROPDOWN MENU + HARGA
+  // ✅ Dropdown durasi
   const menu = new StringSelectMenuBuilder()
     .setCustomId("paket_menu")
     .setPlaceholder("▼ Pilih Durasi Script")
     .addOptions(
-      { label: "1 Hari", description: "Rp 5.000", value: "1hari" },
-      { label: "7 Hari", description: "Rp 20.000", value: "7hari" },
-      { label: "14 Hari", description: "Rp 35.000", value: "14hari" },
-      { label: "30 Hari", description: "Rp 60.000", value: "30hari" }
+      { label: "1 Hari", value: "1 Hari" },
+      { label: "7 Hari", value: "7 Hari" },
+      { label: "14 Hari", value: "14 Hari" },
+      { label: "30 Hari", value: "30 Hari" }
     );
 
   const rowMenu = new ActionRowBuilder().addComponents(menu);
 
-  // ✅ BUTTON BELI SEKARANG
+  // ✅ Button beli
   const rowBtn = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("buy_now")
@@ -74,40 +61,74 @@ client.once("ready", async () => {
       .setStyle(ButtonStyle.Success)
   );
 
-  // ✅ Kirim panel ke Discord
-  await channel.send({
-    embeds: [embed],
-    components: [rowMenu, rowBtn],
-  });
+  await channel.send({ embeds: [embed], components: [rowMenu, rowBtn] });
 
-  console.log("✅ Panel Store berhasil dikirim!");
+  console.log("✅ Panel terkirim ke #test");
 });
 
-// ✅ INTERACTION HANDLER
+// ✅ Interaction Handler
 client.on("interactionCreate", async (interaction) => {
-  // ✅ Dropdown dipilih
+  // Dropdown dipilih
   if (interaction.isStringSelectMenu() && interaction.customId === "paket_menu") {
+    userChoice.set(interaction.user.id, interaction.values[0]);
+
     await interaction.reply({
-      content: `✅ Paket dipilih: **${interaction.values[0]}**\nKlik tombol **BELI SEKARANG** untuk lanjut.`,
+      content: `✅ Kamu pilih durasi: **${interaction.values[0]}**`,
       ephemeral: true,
     });
   }
 
-  // ✅ Button BELI SEKARANG
+  // Klik BELI SEKARANG → QRIS muncul
   if (interaction.isButton() && interaction.customId === "buy_now") {
-    const ticketChannel = await client.channels.fetch(TICKET_CHANNEL);
+    const paket = userChoice.get(interaction.user.id) || "Belum pilih paket";
 
-    // ✅ Kirim order ke channel ticket
-    await ticketChannel.send(
-      `🛒 **ORDER BARU!**\nDari: <@${interaction.user.id}>\nSilakan kirim username Roblox + bukti bayar.`
+    const payEmbed = new EmbedBuilder()
+      .setTitle("💳 Pembayaran QRIS")
+      .setDescription(`
+Paket: **${paket}**
+
+✅ Silakan scan QRIS di bawah  
+Setelah bayar klik tombol **BUAT TICKET**
+`)
+      .setColor(0x00ff99);
+
+    if (QRIS_IMAGE) payEmbed.setImage(QRIS_IMAGE);
+
+    const rowTicket = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("buat_ticket")
+        .setLabel("🎫 BUAT TICKET")
+        .setStyle(ButtonStyle.Primary)
     );
 
     await interaction.reply({
-      content: "✅ Order berhasil! Cek channel ticket untuk lanjut.",
+      embeds: [payEmbed],
+      components: [rowTicket],
+      ephemeral: true,
+    });
+  }
+
+  // Klik BUAT TICKET → Kirim ke #order-vip
+  if (interaction.isButton() && interaction.customId === "buat_ticket") {
+    const orderChannel = await client.channels.fetch(ORDER_CHANNEL);
+
+    const paket = userChoice.get(interaction.user.id) || "Tidak pilih paket";
+
+    await orderChannel.send(`
+🛒 **ORDER MASUK!**
+User: <@${interaction.user.id}>
+Durasi: **${paket}**
+
+✅ Silakan kirim:
+- Username Roblox
+- Bukti transfer QRIS
+`);
+
+    await interaction.reply({
+      content: "✅ Ticket berhasil dibuat! Silakan lanjut di #order-vip",
       ephemeral: true,
     });
   }
 });
 
-// ✅ Login bot
 client.login(process.env.TOKEN);
